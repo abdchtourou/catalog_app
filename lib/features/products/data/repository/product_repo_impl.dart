@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:catalog_app/core/cache/product_cache_service.dart';
 import 'package:catalog_app/core/error/failure.dart';
 import 'package:catalog_app/core/network/network_info.dart';
 import 'package:catalog_app/features/category/domain/entities/pagination.dart';
@@ -224,6 +225,9 @@ class ProductRepoImpl extends ProductRepository {
         // Remove the specific product from cache and invalidate category cache
         await productLocalDataSource.removeCachedProduct(id);
         await productLocalDataSource.invalidateCache();
+
+        // Also remove from the new ProductCacheService
+        await ProductCacheService.removeCachedProduct(id);
 
         return Right(response);
       }

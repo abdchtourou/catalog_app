@@ -485,7 +485,8 @@ class CategoriesScreen extends StatelessWidget {
     BuildContext context,
     CategoriesLoaded state,
     bool isAdmin,
-  ) {
+  )
+  {
     return Column(
       children: [
         // Header section with enhanced tablet styling

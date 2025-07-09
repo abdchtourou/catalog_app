@@ -9,10 +9,8 @@ import 'package:catalog_app/features/category/domain/entities/category.dart';
 import 'package:catalog_app/features/category/presentation/cubit/categories_cubit.dart';
 import 'package:catalog_app/features/category/presentation/screen/category_form_screen.dart';
 import 'package:catalog_app/features/products/domain/entities/product.dart';
-import 'package:catalog_app/features/products/presentation/cubit/all_products_cubit.dart';
 import 'package:catalog_app/features/products/presentation/cubit/productcubit/product_cubit.dart';
 import 'package:catalog_app/features/products/presentation/cubit/products_cubit.dart';
-import 'package:catalog_app/features/products/presentation/screen/all_products_screen.dart';
 import 'package:catalog_app/features/products/presentation/screen/product_details_screen.dart';
 import 'package:catalog_app/features/products/presentation/screen/product_form_screen.dart';
 import 'package:catalog_app/features/products/presentation/screen/products_screen.dart';
@@ -108,17 +106,17 @@ final appRouter = GoRouter(
         );
       },
     ),
-    GoRoute(
-      path: AppRoutes.allProducts,
-      builder: (context, state) {
-        return BlocProvider(
-          create:
-              (context) =>
-                  sl<AllProductsCubit>()..getAllProducts(isInitialLoad: true),
-          child: const AllProductsScreen(),
-        );
-      },
-    ),
+    // GoRoute(
+    //   path: AppRoutes.allProducts,
+    //   builder: (context, state) {
+    //     return BlocProvider(
+    //       create:
+    //           (context) =>
+    //               sl<AllProductsCubit>()..getAllProducts(isInitialLoad: true),
+    //       child: const AllProductsScreen(),
+    //     );
+    //   },
+    // ),
     GoRoute(
       path: AppRoutes.productForm,
       builder: (context, state) {

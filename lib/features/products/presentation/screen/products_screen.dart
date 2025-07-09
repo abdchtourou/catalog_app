@@ -11,7 +11,6 @@ import '../../../../core/shared_widgets/confirmation_dialog.dart';
 import '../../domain/entities/product.dart';
 import '../cubit/products_cubit.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/error_state.dart';
 import '../widgets/widgets.dart';
 
 class ProductsScreen extends StatefulWidget {

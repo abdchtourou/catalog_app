@@ -24,4 +24,3 @@ export 'presentation/screen/categories_screen.dart';
 export 'presentation/screen/category_form_screen.dart';
 export 'presentation/widgets/expandable_categories_list.dart';
 export 'presentation/widgets/hierarchical_category_card.dart';
-export 'presentation/widgets/hierarchical_categories_list.dart';

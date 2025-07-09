@@ -33,7 +33,6 @@ import 'package:catalog_app/features/products/domain/usecase/get_single_product_
 import 'package:catalog_app/features/products/domain/usecase/update_product_use_case.dart';
 import 'package:catalog_app/features/products/domain/usecase/update_product_with_attachments_use_case.dart';
 import 'package:catalog_app/features/products/domain/usecase/update_syrian_price_use_case.dart';
-import 'package:catalog_app/features/products/presentation/cubit/all_products_cubit.dart';
 import 'package:catalog_app/features/products/presentation/cubit/productcubit/product_cubit.dart';
 import 'package:catalog_app/features/products/presentation/cubit/products_cubit.dart';
 import 'package:catalog_app/features/currency/data/datasources/currency_remote_data_source.dart';
@@ -188,13 +187,7 @@ Future<void> init() async {
     ),
   );
 
-  sl.registerFactory<AllProductsCubit>(
-    () => AllProductsCubit(
-      sl<GetAllProductsUseCase>(),
-      sl<GetAllProductsWithSearchUseCase>(),
-      sl<DeleteProductUseCase>(),
-    ),
-  );
+
 
   // Features - Currency
   sl.registerLazySingleton<CurrencyRemoteDataSource>(

@@ -129,8 +129,14 @@ class ProductsCubit extends Cubit<ProductsState> {
             ),
           );
         } else {
-          // No cached data; show a friendly offline error instead of infinite loader.
-          emit(ProductsError(message: "No internet connection"));
+          // No cached data and we're offline – treat it the same as an empty list rather than an error.
+          emit(
+            ProductsLoaded(
+              products: const <Product>[],
+              isLoadingMore: false,
+              hasMore: false,
+            ),
+          );
         }
 
         return;
