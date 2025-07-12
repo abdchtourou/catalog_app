@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/sharedWidgets/custom_app_bar.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/shared_widgets/confirmation_dialog.dart';
+import '../../../../core/network/network_info.dart';
+import '../../../../core/network/service_locator.dart';
 import '../../domain/entities/product.dart';
 import '../cubit/products_cubit.dart';
 import '../widgets/empty_state.dart';
@@ -26,6 +29,35 @@ class ProductsScreen extends StatefulWidget {
 class _ProductsScreenState extends State<ProductsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _currentSearchQuery = '';
+  bool _isConnected = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkConnectivity();
+    _listenToConnectivityChanges();
+  }
+
+  Future<void> _checkConnectivity() async {
+    final networkInfo = sl<NetworkInfo>();
+    final isConnected = await networkInfo.isConnected;
+    if (mounted) {
+      setState(() {
+        _isConnected = isConnected;
+      });
+    }
+  }
+
+  void _listenToConnectivityChanges() {
+    final networkInfo = sl<NetworkInfo>();
+    networkInfo.connectivityStream.listen((result) {
+      if (mounted) {
+        setState(() {
+          _isConnected = result != ConnectivityResult.none;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -33,7 +65,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
     super.dispose();
   }
 
-  void _showDeleteConfirmationDialog(BuildContext context, Product product) {
+  void _showDeleteConfirmationDialog(
+    BuildContext context,
+    Product product,
+  ) async {
+    // Check cached connectivity state
+    if (!_isConnected) {
+      OfflineActionDialog.showDeleteError(context, product);
+      return;
+    }
+
     ConfirmationDialog.show(
       context,
       title: 'Delete Product'.tr(),
@@ -78,6 +119,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         searchController: _searchController,
         onMenuPressed: () {},
         onSearchChanged: _onSearchChanged,
+        isUpdate: false,
         searchHint:
             '${'Search products in'.tr()} ${widget.categoryTitle ?? 'category'.tr()}...',
       ),
@@ -94,59 +136,84 @@ class _ProductsScreenState extends State<ProductsScreen> {
             ],
           ),
         ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveUtils.getMaxContentWidth(context),
-            ),
-            child: BlocListener<ProductsCubit, ProductsState>(
-              listener: (context, state) {
-                if (state is ProductDeleted) {
-                  _showSuccessSnackBar('Product deleted successfully'.tr());
-                  // Refresh the products list after successful deletion
-                  if (_currentSearchQuery.isNotEmpty) {
-                    context.read<ProductsCubit>().searchProducts(
-                      widget.categoryId ?? '',
-                      _currentSearchQuery,
-                      isInitialLoad: true,
-                    );
-                  } else {
-                    context.read<ProductsCubit>().getProducts(
-                      widget.categoryId ?? '',
-                      isInitialLoad: true,
-                    );
-                  }
-                } else if (state is ProductDeleteError) {
-                  _showErrorSnackBar(
-                    '${'Failed to delete product: '.tr()}${state.message}',
-                  );
-                }
-              },
-              child: BlocBuilder<ProductsCubit, ProductsState>(
-                builder: (context, state) {
-                  if (state is ProductsLoading) {
-                    return _buildLoadingState(context);
-                  }
+        child: Column(
+          children: [
+            // Main content
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: ResponsiveUtils.getMaxContentWidth(context),
+                  ),
+                  child: BlocListener<ProductsCubit, ProductsState>(
+                    listener: (context, state) {
+                      if (state is ProductDeleted) {
+                        SnackBarUtils.showSuccess(
+                          context,
+                          'Product deleted successfully'.tr(),
+                        );
+                        // Refresh the products list after successful deletion
+                        _refreshProductsList();
+                      } else if (state is ProductDeleteError) {
+                        SnackBarUtils.showError(
+                          context,
+                          '${'Failed to delete product: '.tr()}${state.message}',
+                        );
+                      }
+                    },
+                    child: BlocBuilder<ProductsCubit, ProductsState>(
+                      builder: (context, state) {
+                        // Handle loading states
+                        if (state is ProductsLoading) {
+                          return ProductsLoadingState(
+                            categoryTitle: widget.categoryTitle,
+                          );
+                        }
 
-                  if (state is ProductsError) {
-                    return _buildErrorState(context, state.message);
-                  }
+                        if (state is ProductsError) {
+                          return ProductsErrorState(
+                            message: state.message,
+                            onRetry: _refreshProductsList,
+                          );
+                        }
 
-                  if (state is ProductsLoaded) {
-                    if (state.products.isEmpty) {
-                      return _currentSearchQuery.isNotEmpty
-                          ? _buildSearchEmptyState(context)
-                          : _buildEmptyState(context);
-                    } else {
-                      return _buildProductsContent(context, state);
-                    }
-                  }
+                        if (state is ProductsLoaded) {
+                          if (state.products.isEmpty) {
+                            // Show loading state for empty results that are still loading
+                            if (state.isLoadingMore) {
+                              return ProductsLoadingState(
+                                categoryTitle: widget.categoryTitle,
+                              );
+                            }
+                            return _currentSearchQuery.isNotEmpty
+                                ? SearchEmptyState(
+                                  searchQuery: _currentSearchQuery,
+                                  categoryTitle: widget.categoryTitle ?? '',
+                                )
+                                : EmptyState(
+                                  categoryTitle: widget.categoryTitle!,
+                                  categoryId: widget.categoryId!,
+                                );
+                          } else {
+                            // Show products with optional loading overlay
+                            return _buildProductsContentWithLoading(
+                              context,
+                              state,
+                            );
+                          }
+                        }
 
-                  return _buildEmptyState(context);
-                },
+                        return EmptyState(
+                          categoryTitle: widget.categoryTitle!,
+                          categoryId: widget.categoryId!,
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -158,6 +225,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
       height: ResponsiveUtils.getResponsiveFABSize(context),
       child: FloatingActionButton(
         onPressed: () async {
+          // Check cached connectivity state
+          if (!_isConnected) {
+            OfflineActionDialog.showActionError(context, 'add product');
+            return;
+          }
+
           final result = await context.push(
             AppRoutes.productForm,
             extra: {'product': null, 'categoryId': widget.categoryId},
@@ -181,438 +254,25 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
-  Widget _buildLoadingState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(
-              ResponsiveUtils.getResponsiveSpacing(context, 32.0),
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(
-                ResponsiveUtils.getResponsiveBorderRadius(context, 24.0),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: ResponsiveUtils.getResponsiveSpacing(
-                    context,
-                    24.0,
-                  ),
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: ResponsiveUtils.getResponsiveSpacing(context, 80.0),
-                  height: ResponsiveUtils.getResponsiveSpacing(context, 80.0),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF8A95), Color(0xFFFF6B7A)],
-                    ),
-                    borderRadius: BorderRadius.circular(
-                      ResponsiveUtils.getResponsiveSpacing(context, 40.0),
-                    ),
-                  ),
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Colors.white,
-                      ),
-                      strokeWidth:
-                          ResponsiveUtils.isTablet(context) ? 4.0 : 3.0,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  height: ResponsiveUtils.getResponsiveSpacing(context, 24.0),
-                ),
-                Text(
-                  'Loading products...'.tr(),
-                  style: TextStyle(
-                    fontSize:
-                        18.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                SizedBox(
-                  height: ResponsiveUtils.getResponsiveSpacing(context, 8.0),
-                ),
-                Text(
-                  '${'Please wait while we fetch products from'.tr()} ${widget.categoryTitle ?? 'this category'.tr()}',
-                  style: TextStyle(
-                    fontSize:
-                        15.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                    color: const Color(0xFF94A3B8),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorState(BuildContext context, String message) {
-    return Center(
-      child: Padding(
-        padding: ResponsiveUtils.getResponsivePadding(context),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: EdgeInsets.all(
-                ResponsiveUtils.getResponsiveSpacing(context, 40.0),
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(
-                  ResponsiveUtils.getResponsiveBorderRadius(context, 28.0),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: ResponsiveUtils.getResponsiveSpacing(
-                      context,
-                      32.0,
-                    ),
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(
-                      ResponsiveUtils.getResponsiveSpacing(context, 24.0),
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.red.withOpacity(0.1),
-                          Colors.red.withOpacity(0.05),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        ResponsiveUtils.getResponsiveBorderRadius(
-                          context,
-                          20.0,
-                        ),
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.error_outline_rounded,
-                      size: ResponsiveUtils.getResponsiveIconSize(
-                        context,
-                        72.0,
-                      ),
-                      color: const Color(0xFFEF4444),
-                    ),
-                  ),
-                  SizedBox(
-                    height: ResponsiveUtils.getResponsiveSpacing(context, 28.0),
-                  ),
-                  Text(
-                    'Oops! Something went wrong'.tr(),
-                    style: TextStyle(
-                      fontSize:
-                          22.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1E293B),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(
-                    height: ResponsiveUtils.getResponsiveSpacing(context, 12.0),
-                  ),
-                  Text(
-                    message,
-                    style: TextStyle(
-                      fontSize:
-                          16.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                      color: const Color(0xFF64748B),
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  SizedBox(
-                    height: ResponsiveUtils.getResponsiveSpacing(context, 36.0),
-                  ),
-                  _buildRetryButton(context),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRetryButton(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: ResponsiveUtils.getResponsiveButtonHeight(context),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFF8A95), Color(0xFFFF6B7A)],
-        ),
-        borderRadius: BorderRadius.circular(
-          ResponsiveUtils.getResponsiveBorderRadius(context, 16.0),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFFF8A95).withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ElevatedButton(
-        onPressed: () {
-          if (_currentSearchQuery.isNotEmpty) {
-            context.read<ProductsCubit>().searchProducts(
-              widget.categoryId ?? '',
-              _currentSearchQuery,
-              isInitialLoad: true,
-            );
-          } else {
-            context.read<ProductsCubit>().getProducts(
-              widget.categoryId ?? '',
-              isInitialLoad: true,
-            );
-          }
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
-          shadowColor: Colors.transparent,
-          padding: ResponsiveUtils.getResponsiveButtonPadding(context),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
-              ResponsiveUtils.getResponsiveBorderRadius(context, 16.0),
-            ),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.refresh_rounded,
-              size: ResponsiveUtils.getResponsiveIconSize(context, 24.0),
-            ),
-            SizedBox(width: ResponsiveUtils.getResponsiveSpacing(context, 8.0)),
-            Text(
-              'Try Again'.tr(),
-              style: TextStyle(
-                fontSize: 17.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    return EmptyState(
-      categoryTitle: widget.categoryTitle!,
-      categoryId: widget.categoryId!,
-    );
-  }
-
-  Widget _buildSearchEmptyState(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: ResponsiveUtils.getResponsivePadding(context),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: EdgeInsets.all(
-                ResponsiveUtils.getResponsiveSpacing(context, 40.0),
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(
-                  ResponsiveUtils.getResponsiveBorderRadius(context, 28.0),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: ResponsiveUtils.getResponsiveSpacing(
-                      context,
-                      24.0,
-                    ),
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(
-                      ResponsiveUtils.getResponsiveSpacing(context, 28.0),
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF64748B).withOpacity(0.1),
-                          const Color(0xFF64748B).withOpacity(0.05),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(
-                        ResponsiveUtils.getResponsiveBorderRadius(
-                          context,
-                          24.0,
-                        ),
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.search_off_rounded,
-                      size: ResponsiveUtils.getResponsiveIconSize(
-                        context,
-                        88.0,
-                      ),
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  SizedBox(
-                    height: ResponsiveUtils.getResponsiveSpacing(context, 28.0),
-                  ),
-                  Text(
-                    'No results found'.tr(),
-                    style: TextStyle(
-                      fontSize:
-                          26.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1E293B),
-                    ),
-                  ),
-                  SizedBox(
-                    height: ResponsiveUtils.getResponsiveSpacing(context, 12.0),
-                  ),
-                  Text(
-                    '${'No products found for'.tr()} "$_currentSearchQuery" ${'in'.tr()} ${widget.categoryTitle}\n${'Try searching with different keywords'.tr()}',
-                    style: TextStyle(
-                      fontSize:
-                          17.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                      color: const Color(0xFF64748B),
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProductsContent(BuildContext context, ProductsLoaded state) {
+  Widget _buildProductsContentWithLoading(
+    BuildContext context,
+    ProductsLoaded state,
+  ) {
     return Column(
       children: [
-        // Header section with enhanced tablet styling
-        Container(
-          margin: ResponsiveUtils.getResponsiveMargin(context),
-          padding: ResponsiveUtils.getResponsivePadding(context).copyWith(
-            top: ResponsiveUtils.getResponsiveSpacing(context, 16.0),
-            bottom: ResponsiveUtils.getResponsiveSpacing(context, 16.0),
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(
-              ResponsiveUtils.getResponsiveBorderRadius(context, 20.0),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: ResponsiveUtils.getResponsiveSpacing(context, 16.0),
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(
-                  ResponsiveUtils.getResponsiveSpacing(context, 12.0),
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A95), Color(0xFFFF6B7A)],
-                  ),
-                  borderRadius: BorderRadius.circular(
-                    ResponsiveUtils.getResponsiveBorderRadius(context, 16.0),
-                  ),
-                ),
-                child: Icon(
-                  Icons.shopping_bag_rounded,
-                  color: Colors.white,
-                  size: ResponsiveUtils.getResponsiveIconSize(context, 28.0),
-                ),
-              ),
-              SizedBox(
-                width: ResponsiveUtils.getResponsiveSpacing(context, 16.0),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${state.products.length} ${'Products'.tr()}',
-                      style: TextStyle(
-                        fontSize:
-                            20.0 *
-                            ResponsiveUtils.getFontSizeMultiplier(context),
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1E293B),
-                      ),
-                    ),
-                    Text(
-                      _currentSearchQuery.isNotEmpty
-                          ? '${'Search results in'.tr()} ${widget.categoryTitle}'
-                          : '${'Products in'.tr()} ${widget.categoryTitle}',
-                      style: TextStyle(
-                        fontSize:
-                            14.0 *
-                            ResponsiveUtils.getFontSizeMultiplier(context),
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        // Header section
+        ProductsHeader(
+          productCount: state.products.length,
+          categoryTitle: widget.categoryTitle,
+          searchQuery: _currentSearchQuery,
+          isLoadingMore: state.isLoadingMore,
         ),
 
         // Products list with pull-to-refresh
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
-              if (_currentSearchQuery.isNotEmpty) {
-                context.read<ProductsCubit>().searchProducts(
-                  widget.categoryId ?? '',
-                  _currentSearchQuery,
-                  isInitialLoad: true,
-                );
-              } else {
-                context.read<ProductsCubit>().getProducts(
-                  widget.categoryId ?? '',
-                  isInitialLoad: true,
-                );
-              }
+              _refreshProductsList();
             },
             color: const Color(0xFFFF8A95),
             backgroundColor: Colors.white,
@@ -637,18 +297,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
               },
               onProductUpdated: () {
                 // Refresh the products list after successful edit
-                if (_currentSearchQuery.isNotEmpty) {
-                  context.read<ProductsCubit>().searchProducts(
-                    widget.categoryId ?? '',
-                    _currentSearchQuery,
-                    isInitialLoad: true,
-                  );
-                } else {
-                  context.read<ProductsCubit>().getProducts(
-                    widget.categoryId ?? '',
-                    isInitialLoad: true,
-                  );
-                }
+                _refreshProductsList();
               },
               onProductDeleted: (product) {
                 // Show confirmation dialog and delete product
@@ -658,131 +307,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ),
         ),
 
-        // Loading more indicator
-        if (state.isLoadingMore) _buildLoadingMoreIndicator(context),
+        // Professional loading indicator for pagination
+        if (state.isLoadingMore && state.hasMore) const LoadingMoreIndicator(),
       ],
     );
   }
 
-  Widget _buildLoadingMoreIndicator(BuildContext context) {
-    return Container(
-      margin: ResponsiveUtils.getResponsiveMargin(context),
-      padding: EdgeInsets.all(
-        ResponsiveUtils.getResponsiveSpacing(context, 20.0),
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(
-          ResponsiveUtils.getResponsiveBorderRadius(context, 16.0),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: ResponsiveUtils.getResponsiveSpacing(context, 24.0),
-            height: ResponsiveUtils.getResponsiveSpacing(context, 24.0),
-            child: CircularProgressIndicator(
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                Color(0xFFFF8A95),
-              ),
-              strokeWidth: ResponsiveUtils.isTablet(context) ? 3.0 : 2.5,
-            ),
-          ),
-          SizedBox(width: ResponsiveUtils.getResponsiveSpacing(context, 16.0)),
-          Text(
-            'Loading more products...'.tr(),
-            style: TextStyle(
-              fontSize: 15.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-              color: const Color(0xFF64748B),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              color: Colors.white,
-              size: ResponsiveUtils.getResponsiveIconSize(context, 20.0),
-            ),
-            SizedBox(
-              width: ResponsiveUtils.getResponsiveSpacing(context, 12.0),
-            ),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(
-                  fontSize:
-                      15.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFF10B981),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(
-            ResponsiveUtils.getResponsiveBorderRadius(context, 12.0),
-          ),
-        ),
-        margin: ResponsiveUtils.getResponsiveMargin(context),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: ResponsiveUtils.getResponsiveIconSize(context, 20.0),
-            ),
-            SizedBox(
-              width: ResponsiveUtils.getResponsiveSpacing(context, 12.0),
-            ),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(
-                  fontSize:
-                      15.0 * ResponsiveUtils.getFontSizeMultiplier(context),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFFEF4444),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(
-            ResponsiveUtils.getResponsiveBorderRadius(context, 12.0),
-          ),
-        ),
-        margin: ResponsiveUtils.getResponsiveMargin(context),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+  void _refreshProductsList() {
+    if (_currentSearchQuery.isNotEmpty) {
+      context.read<ProductsCubit>().searchProducts(
+        widget.categoryId ?? '',
+        _currentSearchQuery,
+        isInitialLoad: true,
+      );
+    } else {
+      context.read<ProductsCubit>().getProducts(
+        widget.categoryId ?? '',
+        isInitialLoad: true,
+      );
+    }
   }
 }

@@ -16,14 +16,21 @@ import 'package:catalog_app/features/products/presentation/screen/product_form_s
 import 'package:catalog_app/features/products/presentation/screen/products_screen.dart';
 
 import '../../features/category/presentation/screen/categories_screen.dart';
+import '../../features/splash/splash_screen.dart';
 
 final appRouter = GoRouter(
   routes: [
     GoRoute(
+      path: AppRoutes.splash,
+      builder: (context, state) {
+        return const SplashScreen();
+      },
+    ),
+    GoRoute(
       path: AppRoutes.home,
       builder: (context, state) {
-        return BlocProvider(
-          create: (context) => sl<CategoriesCubit>(),
+        return BlocProvider.value(
+          value: sl<CategoriesCubit>(),
           child: CategoriesScreen(),
         );
       },

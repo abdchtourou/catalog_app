@@ -16,8 +16,8 @@ import 'package:catalog_app/features/category/domain/usecases/get_categories_use
 import 'package:catalog_app/features/category/domain/usecases/get_single_category_use_case.dart';
 import 'package:catalog_app/features/category/domain/usecases/update_category_use_case.dart';
 import 'package:catalog_app/features/category/presentation/cubit/categories_cubit.dart';
-import 'package:catalog_app/features/products/data/datasource/product_local_data_source.dart';
 import 'package:catalog_app/features/products/data/datasource/product_remote_data_source.dart';
+import 'package:catalog_app/core/cache/product_cache_service.dart';
 import 'package:catalog_app/features/products/data/repository/product_repo_impl.dart';
 import 'package:catalog_app/features/products/domain/repository/product_repository.dart';
 import 'package:catalog_app/features/products/domain/usecase/create_attachment_use_case.dart';
@@ -57,6 +57,9 @@ Future<void> init() async {
 
   sl.registerLazySingleton<ApiService>(() => ApiService(networkInfo: sl()));
 
+  // Initialize ProductCacheService
+  await ProductCacheService.initialize();
+
   // Features - Category
   sl.registerLazySingleton<CategoryRemoteDataSource>(
     () => CategoryRemoteDataSourceImpl(sl()),
@@ -93,24 +96,16 @@ Future<void> init() async {
   sl.registerLazySingleton<GetCategoriesByParentUseCase>(
     () => GetCategoriesByParentUseCase(sl()),
   );
-  sl.registerFactory<CategoriesCubit>(
+  sl.registerLazySingleton<CategoriesCubit>(
     () => CategoriesCubit(sl(), sl(), sl(), sl(), sl(), sl()),
   );
 
   // Features - Product
-  sl.registerLazySingleton<Box>(() => Hive.box('productsBox'));
   sl.registerLazySingleton<ProductRemoteDataSource>(
     () => ProductRemoteDataSourceImpl(sl()),
   );
-  sl.registerLazySingleton<ProductLocalDataSource>(
-    () => ProductLocalDataSourceImpl(sl()),
-  );
   sl.registerLazySingleton<ProductRepository>(
-    () => ProductRepoImpl(
-      productRemoteDataSource: sl(),
-      productLocalDataSource: sl(),
-      networkInfo: sl(),
-    ),
+    () => ProductRepoImpl(productRemoteDataSource: sl(), networkInfo: sl()),
   );
   sl.registerLazySingleton<GetProductsUseCase>(() => GetProductsUseCase(sl()));
 
@@ -186,8 +181,6 @@ Future<void> init() async {
       sl<NetworkInfo>(),
     ),
   );
-
-
 
   // Features - Currency
   sl.registerLazySingleton<CurrencyRemoteDataSource>(

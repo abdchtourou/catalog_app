@@ -354,7 +354,7 @@ class _ExpandableCategoriesListState extends State<ExpandableCategoriesList>
                                                     'Subcategories'.tr(),
                                                     style: TextStyle(
                                                       fontSize:
-                                                          14.0 *
+                                                          20.0 *
                                                           ResponsiveUtils.getFontSizeMultiplier(
                                                             context,
                                                           ),
@@ -451,6 +451,16 @@ class _ExpandableCategoriesListState extends State<ExpandableCategoriesList>
                                                               ResponsiveUtils.getResponsiveSpacing(
                                                                 context,
                                                                 12.0,
+                                                              ),
+                                                          left:
+                                                              ResponsiveUtils.getResponsiveSpacing(
+                                                                context,
+                                                                15.0,
+                                                              ),
+                                                          right:
+                                                              ResponsiveUtils.getResponsiveSpacing(
+                                                                context,
+                                                                15.0,
                                                               ),
                                                         ),
                                                         child: HierarchicalCategoryCard(

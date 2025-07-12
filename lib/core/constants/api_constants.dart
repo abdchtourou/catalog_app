@@ -1,11 +1,11 @@
 class ApiConstants {
   // static const String baseUrl = 'http://10.0.2.2:5041/api';
-  static const String baseUrl = 'https://alternative-medicine-web-api-production.up.railway.app/api';
+  static const String baseUrl = 'https://alternative-medicine-web-api-production-a365.up.railway.app/api';
 
   static const int connectTimeout = 30000;
   static const int receiveTimeout = 30000;
   // static const String baseImageUrl = 'http://10.0.2.2:5041/';
-  static const String baseImageUrl = 'https://alternative-medicine-web-api-production.up.railway.app/';
+  static const String baseImageUrl = 'https://alternative-medicine-web-api-production-a365.up.railway.app/';
 
   static const Map<String, String> defaultHeaders = {
     'Content-Type': 'application/json',
@@ -40,7 +40,7 @@ class ApiConstants {
   static String getProductsByCategoryWithSearch(
     String categoryId, {
     int pageNumber = 1,
-    int pageSize = 10,
+    int pageSize = 100,
     String? searchQuery,
   }) {
     String endpoint =

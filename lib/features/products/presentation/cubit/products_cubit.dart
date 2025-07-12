@@ -33,7 +33,7 @@ class ProductsCubit extends Cubit<ProductsState> {
 
   int _currentPage = 1;
   bool _isFetching = false;
-  final int _pageSize = 20;
+  final int _pageSize = 100;
   bool _hasMore = true;
   final List<Product> _products = [];
   String? _currentCategoryId;

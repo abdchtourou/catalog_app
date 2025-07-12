@@ -18,9 +18,16 @@ class CategoriesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    context.read<CategoriesCubit>().refresh();
     // Initialize ScreenSize
     ScreenSize.init(context);
+
+    // Check if categories are already loaded, if not, fetch them
+    final cubit = context.read<CategoriesCubit>();
+    final currentState = cubit.state;
+    if (currentState is CategoriesInitial ||
+        (currentState is CategoriesLoaded && currentState.categories.isEmpty)) {
+      cubit.getCategories(isInitialLoad: true);
+    }
 
     // Use global admin configuration
     final isAdmin = AppConfig.isAdmin;
@@ -66,6 +73,20 @@ class CategoriesScreen extends StatelessWidget {
                   }
 
                   return _buildCategoriesContent(context, state, isAdmin);
+                }
+
+                // Handle delete-related states to prevent blank screen
+                if (state is CategoryDeleting) {
+                  return _buildLoadingState(context);
+                }
+
+                if (state is CategoryDeleteError) {
+                  return _buildErrorState(context, state.message);
+                }
+
+                if (state is CategoryDeleted) {
+                  // Show a brief success indicator while waiting for fresh data
+                  return _buildLoadingState(context);
                 }
 
                 return const SizedBox.shrink();
@@ -485,8 +506,7 @@ class CategoriesScreen extends StatelessWidget {
     BuildContext context,
     CategoriesLoaded state,
     bool isAdmin,
-  )
-  {
+  ) {
     return Column(
       children: [
         // Header section with enhanced tablet styling

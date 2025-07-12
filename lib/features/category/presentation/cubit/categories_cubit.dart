@@ -22,7 +22,7 @@ class CategoriesCubit extends Cubit<CategoriesState> {
 
   int _currentPage = 1;
   bool _isFetching = false;
-  final int _pageSize = 30;
+  final int _pageSize = 100;
   bool _hasMore = true;
   final List<Category> _categories = [];
 

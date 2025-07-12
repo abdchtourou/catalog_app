@@ -19,7 +19,6 @@ export 'domain/usecase/delete_product_use_case.dart';
 export 'data/model/product_model.dart';
 export 'data/repository/product_repo_impl.dart';
 export 'data/datasource/product_remote_data_source.dart';
-export 'data/datasource/product_local_data_source.dart';
 
 // Presentation
 export 'presentation/cubit/products_cubit.dart';

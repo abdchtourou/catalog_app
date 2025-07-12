@@ -1,11 +1,8 @@
 import 'dart:io';
-
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
 import '../../../../core/shared_widgets/custom_text_form_field.dart';
-import '../../../../core/shared_widgets/form_submit_button.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../domain/entities/category.dart';
 import '../cubit/categories_cubit.dart';

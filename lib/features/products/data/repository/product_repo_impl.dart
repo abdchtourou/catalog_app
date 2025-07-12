@@ -3,9 +3,7 @@ import 'package:catalog_app/core/cache/product_cache_service.dart';
 import 'package:catalog_app/core/error/failure.dart';
 import 'package:catalog_app/core/network/network_info.dart';
 import 'package:catalog_app/features/category/domain/entities/pagination.dart';
-import 'package:catalog_app/features/products/data/datasource/product_local_data_source.dart';
 import 'package:catalog_app/features/products/data/datasource/product_remote_data_source.dart';
-import 'package:catalog_app/features/products/data/model/product_model.dart';
 import 'package:catalog_app/features/products/data/model/product_response_model.dart';
 import 'package:catalog_app/features/products/domain/entities/attachment.dart';
 import 'package:catalog_app/features/products/domain/entities/product.dart';
@@ -15,11 +13,10 @@ import 'package:dartz/dartz.dart';
 
 class ProductRepoImpl extends ProductRepository {
   final ProductRemoteDataSource productRemoteDataSource;
-  final ProductLocalDataSource productLocalDataSource;
   final NetworkInfo networkInfo;
+
   ProductRepoImpl({
     required this.productRemoteDataSource,
-    required this.productLocalDataSource,
     required this.networkInfo,
   });
 
@@ -30,14 +27,55 @@ class ProductRepoImpl extends ProductRepository {
     int? pageSize,
   }) async {
     try {
+      final page = pageNumber ?? 1;
+      final limit = pageSize ?? 20;
+      final categoryIdInt = int.tryParse(categoryId);
+
+      // Check if we have cached data first
+      final cachedProducts = await ProductCacheService.getCachedProductList(
+        categoryId: categoryIdInt,
+        page: page,
+        limit: limit,
+      );
+
       if (await networkInfo.isConnected) {
-        return await _getAndCacheProducts(
+        // Fetch from network
+        final response = await productRemoteDataSource.getProducts(
           categoryId,
-          pageNumber: pageNumber,
-          pageSize: pageSize,
+          pageNumber: page,
+          pageSize: limit,
         );
+
+        // Cache the fresh data
+        await ProductCacheService.cacheProductList(
+          response.products,
+          categoryId: categoryIdInt,
+          page: page,
+          limit: limit,
+          totalCount: response.pagination.totalCount,
+        );
+
+        return Right(response);
       } else {
-        return await _getCachedProducts(categoryId);
+        // Return cached data if available, otherwise return empty
+        if (cachedProducts != null && cachedProducts.isNotEmpty) {
+          return Right(
+            ProductResponseModel(
+              products: cachedProducts,
+              isSuccessful: true,
+              responseTime: DateTime.now().toIso8601String(),
+              pagination: Pagination(
+                page: page,
+                totalCount: cachedProducts.length,
+                resultCount: cachedProducts.length,
+                resultsPerPage: limit,
+              ),
+              error: '',
+            ),
+          );
+        } else {
+          return Left(OfflineFailure());
+        }
       }
     } catch (e) {
       return Left(ServerFailure());
@@ -52,100 +90,60 @@ class ProductRepoImpl extends ProductRepository {
     String? searchQuery,
   }) async {
     try {
+      final page = pageNumber ?? 1;
+      final limit = pageSize ?? 20;
+      final categoryIdInt = int.tryParse(categoryId);
+
+      // Check if we have cached search results
+      final cachedProducts = await ProductCacheService.getCachedProductList(
+        categoryId: categoryIdInt,
+        searchQuery: searchQuery,
+        page: page,
+        limit: limit,
+      );
+
       if (await networkInfo.isConnected) {
-        return await _getAndCacheProductsWithSearch(
+        // Fetch from network
+        final response = await productRemoteDataSource.getProductsWithSearch(
           categoryId,
-          pageNumber: pageNumber,
-          pageSize: pageSize,
+          pageNumber: page,
+          pageSize: limit,
           searchQuery: searchQuery,
         );
+
+        // Cache the fresh data
+        await ProductCacheService.cacheProductList(
+          response.products,
+          categoryId: categoryIdInt,
+          searchQuery: searchQuery,
+          page: page,
+          limit: limit,
+          totalCount: response.pagination.totalCount,
+        );
+
+        return Right(response);
       } else {
-        return await _getCachedProducts(categoryId);
+        // Return cached data if available, otherwise return empty
+        if (cachedProducts != null && cachedProducts.isNotEmpty) {
+          return Right(
+            ProductResponseModel(
+              products: cachedProducts,
+              isSuccessful: true,
+              responseTime: DateTime.now().toIso8601String(),
+              pagination: Pagination(
+                page: page,
+                totalCount: cachedProducts.length,
+                resultCount: cachedProducts.length,
+                resultsPerPage: limit,
+              ),
+              error: '',
+            ),
+          );
+        } else {
+          return Left(OfflineFailure());
+        }
       }
     } catch (e) {
-      return Left(ServerFailure());
-    }
-  }
-
-  Future<Either<Failure, ProductsResponse>> _getAndCacheProducts(
-    String categoryId, {
-    int? pageNumber,
-    int? pageSize,
-  }) async {
-    final response = await productRemoteDataSource.getProducts(
-      categoryId,
-      pageNumber: pageNumber,
-      pageSize: pageSize,
-    );
-
-    final productModels =
-        response.products.map((e) => ProductModel.fromEntity(e)).toList();
-
-    // Cache products by category
-    await productLocalDataSource.cacheProductsByCategory(
-      categoryId,
-      productModels,
-    );
-
-    // Also cache individual products for faster detail access
-    for (final productModel in productModels) {
-      await productLocalDataSource.cacheProduct(productModel);
-    }
-
-    return Right(response);
-  }
-
-  Future<Either<Failure, ProductsResponse>> _getAndCacheProductsWithSearch(
-    String categoryId, {
-    int? pageNumber,
-    int? pageSize,
-    String? searchQuery,
-  }) async {
-    final response = await productRemoteDataSource.getProductsWithSearch(
-      categoryId,
-      pageNumber: pageNumber,
-      pageSize: pageSize,
-      searchQuery: searchQuery,
-    );
-
-    final productModels =
-        response.products.map((e) => ProductModel.fromEntity(e)).toList();
-
-    // Cache products by category
-    await productLocalDataSource.cacheProductsByCategory(
-      categoryId,
-      productModels,
-    );
-
-    // Also cache individual products for faster detail access
-    for (final productModel in productModels) {
-      await productLocalDataSource.cacheProduct(productModel);
-    }
-
-    return Right(response);
-  }
-
-  Future<Either<Failure, ProductsResponse>> _getCachedProducts(
-    String categoryId,
-  ) async {
-    try {
-      final cachedProducts = (await productLocalDataSource
-          .getCachedProductsByCategory(categoryId));
-      return Right(
-        ProductResponseModel(
-          products: cachedProducts,
-          isSuccessful: true,
-          responseTime: DateTime.now().toIso8601String(),
-          pagination: Pagination(
-            page: 1,
-            totalCount: 1,
-            resultCount: 1,
-            resultsPerPage: 1,
-          ),
-          error: '',
-        ),
-      );
-    } catch (_) {
       return Left(ServerFailure());
     }
   }
@@ -153,8 +151,8 @@ class ProductRepoImpl extends ProductRepository {
   @override
   Future<Either<Failure, Product>> getProduct(int id) async {
     try {
-      // First, try to get from cache if it's valid
-      final cachedProduct = await productLocalDataSource.getCachedProduct(id);
+      // First, try to get from cache
+      final cachedProduct = ProductCacheService.getCachedProduct(id);
       if (cachedProduct != null) {
         // Return cached product immediately for better performance
         return Right(cachedProduct);
@@ -165,9 +163,7 @@ class ProductRepoImpl extends ProductRepository {
         final response = await productRemoteDataSource.getProduct(id);
 
         // Cache the fetched product for future use
-        await productLocalDataSource.cacheProduct(
-          ProductModel.fromEntity(response),
-        );
+        await ProductCacheService.cacheProduct(response);
 
         return Right(response);
       } else {
@@ -200,13 +196,13 @@ class ProductRepoImpl extends ProductRepository {
         );
 
         // Remove the specific product from cache and invalidate category cache
-        await productLocalDataSource.removeCachedProduct(id);
-        await productLocalDataSource.invalidateCache();
+        await ProductCacheService.removeCachedProduct(id);
+        await ProductCacheService.invalidateCategoryCache(
+          int.parse(categoryId),
+        );
 
         // Cache the updated product
-        await productLocalDataSource.cacheProduct(
-          ProductModel.fromEntity(response),
-        );
+        await ProductCacheService.cacheProduct(response);
 
         return Right(response);
       }
@@ -222,11 +218,7 @@ class ProductRepoImpl extends ProductRepository {
       if (await networkInfo.isConnected) {
         final response = await productRemoteDataSource.deleteProduct(id);
 
-        // Remove the specific product from cache and invalidate category cache
-        await productLocalDataSource.removeCachedProduct(id);
-        await productLocalDataSource.invalidateCache();
-
-        // Also remove from the new ProductCacheService
+        // Remove the specific product from cache
         await ProductCacheService.removeCachedProduct(id);
 
         return Right(response);
@@ -237,7 +229,6 @@ class ProductRepoImpl extends ProductRepository {
     }
   }
 
-  // New methods for proper backend integration
   @override
   Future<Either<Failure, Product>> createProductWithImages(
     String name,
@@ -257,7 +248,13 @@ class ProductRepoImpl extends ProductRepository {
           images,
         );
 
-        await productLocalDataSource.invalidateCache();
+        // Invalidate category cache to ensure fresh data is fetched
+        await ProductCacheService.invalidateCategoryCache(
+          int.parse(categoryId),
+        );
+
+        // Cache the new product
+        await ProductCacheService.cacheProduct(response);
 
         return Right(response);
       }
@@ -270,18 +267,17 @@ class ProductRepoImpl extends ProductRepository {
   @override
   Future<Either<Failure, Attachment>> createAttachment(
     int productId,
-    File imageFile,
+    File image,
   ) async {
     try {
       if (await networkInfo.isConnected) {
         final response = await productRemoteDataSource.createAttachment(
           productId,
-          imageFile,
+          image,
         );
 
-        // Invalidate cache to refresh product data
-        await productLocalDataSource.removeCachedProduct(productId);
-        await productLocalDataSource.invalidateCache();
+        // Invalidate cached product to ensure fresh data is fetched
+        await ProductCacheService.removeCachedProduct(productId);
 
         return Right(response);
       }
@@ -295,12 +291,17 @@ class ProductRepoImpl extends ProductRepository {
   Future<Either<Failure, void>> deleteAttachment(int attachmentId) async {
     try {
       if (await networkInfo.isConnected) {
-        await productRemoteDataSource.deleteAttachment(attachmentId);
+        final response = await productRemoteDataSource.deleteAttachment(
+          attachmentId,
+        );
 
-        // Invalidate cache to refresh product data
-        await productLocalDataSource.invalidateCache();
+        // Note: We don't have direct productId here, so we could either:
+        // 1. Clear all cache (more aggressive)
+        // 2. Keep track of attachment-to-product mapping
+        // For now, we'll clear expired cache to be safe
+        await ProductCacheService.clearExpiredCache();
 
-        return const Right(null);
+        return Right(response);
       }
       return Left(OfflineFailure());
     } catch (e) {
@@ -314,11 +315,10 @@ class ProductRepoImpl extends ProductRepository {
   ) async {
     try {
       if (await networkInfo.isConnected) {
-        // Use the bulk delete method from remote data source
         await productRemoteDataSource.deleteAttachments(attachmentIds);
 
-        // Invalidate cache to refresh product data
-        await productLocalDataSource.invalidateCache();
+        // Clear expired cache after bulk deletion
+        await ProductCacheService.clearExpiredCache();
 
         return const Right(null);
       }
@@ -365,13 +365,13 @@ class ProductRepoImpl extends ProductRepository {
             );
 
         // Remove the specific product from cache and invalidate category cache
-        await productLocalDataSource.removeCachedProduct(id);
-        await productLocalDataSource.invalidateCache();
+        await ProductCacheService.removeCachedProduct(id);
+        if (categoryId != null) {
+          await ProductCacheService.invalidateCategoryCache(categoryId);
+        }
 
         // Cache the updated product
-        await productLocalDataSource.cacheProduct(
-          ProductModel.fromEntity(response),
-        );
+        await ProductCacheService.cacheProduct(response);
 
         return Right(response);
       }
@@ -381,19 +381,48 @@ class ProductRepoImpl extends ProductRepository {
     }
   }
 
+  // Note: updateSyrianPrice is handled via updateProduct method
+  // The Syrian price is part of the product update, not a separate endpoint
+
   @override
   Future<Either<Failure, ProductsResponse>> getAllProducts({
     int? pageNumber,
     int? pageSize,
   }) async {
     try {
+      final page = pageNumber ?? 1;
+      final limit = pageSize ?? 20;
+
       if (await networkInfo.isConnected) {
-        return await _getAndCacheAllProducts(
-          pageNumber: pageNumber,
-          pageSize: pageSize,
+        final response = await productRemoteDataSource.getAllProducts(
+          pageNumber: page,
+          pageSize: limit,
         );
+
+        // Cache individual products for faster detail access
+        for (final product in response.products) {
+          await ProductCacheService.cacheProduct(product);
+        }
+
+        return Right(response);
       } else {
-        return await _getCachedAllProducts();
+        // For offline mode, return all cached products
+        final cachedProducts = ProductCacheService.getAllCachedProducts();
+
+        return Right(
+          ProductResponseModel(
+            products: cachedProducts,
+            pagination: Pagination(
+              page: page,
+              totalCount: cachedProducts.length,
+              resultCount: cachedProducts.length,
+              resultsPerPage: limit,
+            ),
+            isSuccessful: true,
+            responseTime: DateTime.now().toIso8601String(),
+            error: '',
+          ),
+        );
       }
     } catch (e) {
       return Left(ServerFailure());
@@ -407,83 +436,60 @@ class ProductRepoImpl extends ProductRepository {
     String? searchQuery,
   }) async {
     try {
+      final page = pageNumber ?? 1;
+      final limit = pageSize ?? 20;
+
       if (await networkInfo.isConnected) {
-        return await _getAndCacheAllProductsWithSearch(
-          pageNumber: pageNumber,
-          pageSize: pageSize,
+        final response = await productRemoteDataSource.getAllProductsWithSearch(
+          pageNumber: page,
+          pageSize: limit,
           searchQuery: searchQuery,
         );
+
+        // Cache individual products for faster detail access
+        for (final product in response.products) {
+          await ProductCacheService.cacheProduct(product);
+        }
+
+        return Right(response);
       } else {
-        return await _getCachedAllProducts();
+        // For offline mode, return all cached products and filter locally
+        final cachedProducts = ProductCacheService.getAllCachedProducts();
+
+        // Simple local search if search query is provided
+        List<Product> filteredProducts = cachedProducts;
+        if (searchQuery != null && searchQuery.isNotEmpty) {
+          filteredProducts =
+              cachedProducts
+                  .where(
+                    (product) =>
+                        product.name.toLowerCase().contains(
+                          searchQuery.toLowerCase(),
+                        ) ||
+                        product.description.toLowerCase().contains(
+                          searchQuery.toLowerCase(),
+                        ),
+                  )
+                  .toList();
+        }
+
+        return Right(
+          ProductResponseModel(
+            products: filteredProducts,
+            pagination: Pagination(
+              page: page,
+              totalCount: filteredProducts.length,
+              resultCount: filteredProducts.length,
+              resultsPerPage: limit,
+            ),
+            isSuccessful: true,
+            responseTime: DateTime.now().toIso8601String(),
+            error: '',
+          ),
+        );
       }
     } catch (e) {
       return Left(ServerFailure());
-    }
-  }
-
-  Future<Either<Failure, ProductsResponse>> _getAndCacheAllProducts({
-    int? pageNumber,
-    int? pageSize,
-  }) async {
-    final response = await productRemoteDataSource.getAllProducts(
-      pageNumber: pageNumber,
-      pageSize: pageSize,
-    );
-
-    final productModels =
-        response.products.map((e) => ProductModel.fromEntity(e)).toList();
-
-    // Cache individual products for faster detail access
-    for (final productModel in productModels) {
-      await productLocalDataSource.cacheProduct(productModel);
-    }
-
-    return Right(response);
-  }
-
-  Future<Either<Failure, ProductsResponse>> _getAndCacheAllProductsWithSearch({
-    int? pageNumber,
-    int? pageSize,
-    String? searchQuery,
-  }) async {
-    final response = await productRemoteDataSource.getAllProductsWithSearch(
-      pageNumber: pageNumber,
-      pageSize: pageSize,
-      searchQuery: searchQuery,
-    );
-
-    final productModels =
-        response.products.map((e) => ProductModel.fromEntity(e)).toList();
-
-    // Cache individual products for faster detail access
-    for (final productModel in productModels) {
-      await productLocalDataSource.cacheProduct(productModel);
-    }
-
-    return Right(response);
-  }
-
-  Future<Either<Failure, ProductsResponse>> _getCachedAllProducts() async {
-    try {
-      // For now, return empty list since we don't have a method to get all cached products
-      // This is a fallback for offline mode - in practice, users would need to visit
-      // categories first to cache products
-      final response = ProductResponseModel(
-        products: const [],
-        pagination: const Pagination(
-          page: 1,
-          totalCount: 0,
-          resultCount: 0,
-          resultsPerPage: 20,
-        ),
-        isSuccessful: true,
-        responseTime: DateTime.now().toIso8601String(),
-        error: '',
-      );
-
-      return Right(response);
-    } catch (e) {
-      return Left(EmptyCacheFailure());
     }
   }
 }

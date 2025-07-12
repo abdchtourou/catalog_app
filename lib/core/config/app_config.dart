@@ -1,7 +1,7 @@
 /// Global application configuration
 class AppConfig {
   // Admin configuration
-  static const bool isAdmin = true; // Set to true for admin access
+  static const bool isAdmin = false; // Set to true for admin access
 
   // Other global configurations can be added here
   static const String appName = 'Catalog App';

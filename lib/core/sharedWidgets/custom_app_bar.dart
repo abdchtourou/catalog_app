@@ -1,3 +1,4 @@
+import 'package:catalog_app/core/cache/image_cache_service.dart';
 import 'package:flutter/material.dart';
 import '../config/app_config.dart';
 import '../utils/responsive_utils.dart';
@@ -13,6 +14,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool showDrawer;
   final Color backgroundColor;
   final Color textColor;
+  final isUpdate;
 
   const CustomAppBar({
     super.key,
@@ -23,6 +25,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.searchController,
     this.showSearch = true,
     this.showDrawer = true,
+    this.isUpdate = true,
     this.backgroundColor = const Color(0xFFFFC1D4),
     this.textColor = Colors.white,
   });
@@ -55,10 +58,23 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: Colors.white,
                       radius: ResponsiveUtils.getResponsiveIconSize(
                         context,
-                        16,
+                        26,
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/Logo-AM-1-small.png',
+                          width: ResponsiveUtils.getResponsiveIconSize(
+                            context,
+                            52,
+                          ),
+                          height: ResponsiveUtils.getResponsiveIconSize(
+                            context,
+                            52,
+                          ),
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
                     SizedBox(
@@ -79,7 +95,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                       ),
                     ),
                     // Currency widget for admin users
-                    if (AppConfig.isAdmin) ...[
+                    if (AppConfig.isAdmin && isUpdate) ...[
                       SizedBox(
                         width: ResponsiveUtils.getResponsiveSpacing(context, 8),
                       ),
@@ -149,7 +165,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ],
                   ),
                 ),
-               // Bottom padding
+                // Bottom padding
               ],
             ],
           ),

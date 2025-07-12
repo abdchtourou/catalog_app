@@ -124,6 +124,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               title: product.name,
               showSearch: false,
               showDrawer: false,
+              isUpdate: false,
             ),
             body: Container(
               decoration: BoxDecoration(
