@@ -148,11 +148,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                       left: ResponsiveUtils.getResponsiveSpacing(context, 16),
                       right: ResponsiveUtils.getResponsiveSpacing(context, 16),
                       bottom: ResponsiveUtils.getResponsiveSpacing(context, 24),
-                      // No top padding to eliminate space between AppBar and image
                     ),
                     child: Column(
                       children: [
-                        // Enhanced product image carousel
                         _buildImageCarousel(context, product, cubit, images),
 
                         SizedBox(
@@ -162,7 +160,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                           ),
                         ),
 
-                        // Enhanced product details section
                         _buildProductDetails(context, product),
                       ],
                     ),
@@ -459,7 +456,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     product,
     cubit,
     List<String> images,
-  ) {
+  )
+  {
     // Calculate two-thirds of screen height minus AppBar height
     final screenHeight = MediaQuery.of(context).size.height;
     final appBarHeight = 70.0; // CustomAppBar height for non-search

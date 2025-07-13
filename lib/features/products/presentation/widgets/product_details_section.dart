@@ -100,8 +100,6 @@ class ProductDetailsSection extends StatelessWidget {
                 height: 1.5,
                 letterSpacing: 0.1,
               ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
         );
